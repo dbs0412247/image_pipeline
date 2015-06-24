@@ -142,7 +142,7 @@ def _get_corners(img, board, refine = True, checkerboard_flags=0):
     else:
         mono = img
     (ok, corners) = cv2.findChessboardCorners(mono, (board.n_cols, board.n_rows), flags = cv2.CALIB_CB_ADAPTIVE_THRESH |
-                                              cv2.CALIB_CB_NORMALIZE_IMAGE | checkerboard_flags)
+                                              cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK | checkerboard_flags)
     if not ok:
         return (ok, corners)
 
@@ -424,22 +424,25 @@ class Calibrator(object):
         msg.P = numpy.ravel(p).copy().tolist()
         return msg
 
-    def lrreport(self, d, k, r, p, e=0, f=0):
+    def lrreport(self, d, k, r, p):
         print("D = ", numpy.ravel(d).tolist())
         print("K = ", numpy.ravel(k).tolist())
         print("R = ", numpy.ravel(r).tolist())
-        print("R = ", numpy.ravel(r).tolist())
-        if (e != 0) 
-          print("E = ", numpy.ravel(e).tolist())
-        if (f != 0)
-          print("F = ", numpy.ravel(f).tolist())
+        print("P = ", numpy.ravel(p).tolist())
 
-    # TODO: show output as YAML 
-    def lrost(self, name, d, k, r, p, e=0, f=0):
+    # TODO Get rid of OST format, show output as YAML instead
+    def lrost(self, name, d, k, r, p):
         calmessage = (
-        + "width: " + str(self.size[0]) 
+        "# oST version 5.0 parameters\n"
         + "\n"
-        + "height: " + str(self.size[1]) 
+        + "\n"
+        + "[image]\n"
+        + "\n"
+        + "width\n"
+        + str(self.size[0]) + "\n"
+        + "\n"
+        + "height\n"
+        + str(self.size[1]) + "\n"
         + "\n"
         + "[%s]" % name + "\n"
         + "\n"
@@ -843,15 +846,15 @@ class StereoCalibrator(Calibrator):
 
         self.T = numpy.zeros((3, 1), dtype=numpy.float64)
         self.R = numpy.eye(3, dtype=numpy.float64)
-        self.E = numpy.zeros((3,3), dtype=numpy.float64)
-        self.F = numpy.zeros((3,3), dtype=numpy.float64)
+        self.E = numpy.eye(3, dtype=numpy.float64)
+        self.F = numpy.eye(3, dtype=numpy.float64)
         cv2.stereoCalibrate(opts, lipts, ripts, self.size,
                            self.l.intrinsics, self.l.distortion,
                            self.r.intrinsics, self.r.distortion,
                            self.R,                            # R
                            self.T,                            # T
-                           self.E,                            # Essential Matrix E
-                           self.F,                            # Fundamental Matrix F
+                           self.E, 
+                           self.F, 
                            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1, 1e-5),
                            flags = flags)
 
@@ -886,8 +889,8 @@ class StereoCalibrator(Calibrator):
         and right cameras respectively.
         """
 
-        return (self.lrmsg(self.l.distortion, self.l.intrinsics, self.l.R, self.l.P, self.l,E, self.l.F),
-                self.lrmsg(self.r.distortion, self.r.intrinsics, self.r.R, self.r.P, self.r.E, self.r.F))
+        return (self.lrmsg(self.l.distortion, self.l.intrinsics, self.l.R, self.l.P),
+                self.lrmsg(self.r.distortion, self.r.intrinsics, self.r.R, self.r.P))
 
     def from_message(self, msgs, alpha = 0.0):
         """ Initialize the camera calibration from a pair of CameraInfo messages.  """
@@ -904,11 +907,13 @@ class StereoCalibrator(Calibrator):
 
     def report(self):
         print("\nLeft:")
-        self.lrreport(self.l.distortion, self.l.intrinsics, self.l.R, self.l.P, self.l.E, self.l.F)
+        self.lrreport(self.l.distortion, self.l.intrinsics, self.l.R, self.l.P)
         print("\nRight:")
-        self.lrreport(self.r.distortion, self.r.intrinsics, self.r.R, self.r.P, self.r.E, self.r.F)
+        self.lrreport(self.r.distortion, self.r.intrinsics, self.r.R, self.r.P)
         print("self.T ", numpy.ravel(self.T).tolist())
         print("self.R ", numpy.ravel(self.R).tolist())
+        print("self.E ", numpy.ravel(self.E).tolist())
+        print("self.F ", numpy.ravel(self.F).tolist())
 
     def ost(self):
         return (self.lrost(self.name + "/left", self.l.distortion, self.l.intrinsics, self.l.R, self.l.P) +
